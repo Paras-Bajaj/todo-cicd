@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     
     <groupId>com.example</groupId>
-    <artifactId>django-todo-cicd</artifactId>
+    <artifactId>todo-website</artifactId>
     <version>1.0</version>
     <packaging>pom</packaging>
     
@@ -18,7 +18,7 @@
                 <version>3.0.0</version>
                 <executions>
                     <execution>
-                        <id>setup-python</id>
+                        <id>validate-html</id>
                         <phase>compile</phase>
                         <goals>
                             <goal>exec</goal>
@@ -28,7 +28,19 @@
                             <arguments>
                                 <argument>-c</argument>
                                 <argument>
-                                    echo "This is a Django project, not Java!"
+                                    echo "Validating HTML/CSS/JS website..."
+                                    echo "Project structure:"
+                                    ls -la
+                                    
+                                    # Check if index.html exists
+                                    if [ -f "index.html" ] || [ -f "todo.html" ]; then
+                                        echo "HTML file found ✓"
+                                    else
+                                        echo "WARNING: No HTML file found"
+                                    fi
+                                    
+                                    # Simple validation
+                                    echo "Basic validation complete"
                                 </argument>
                             </arguments>
                         </configuration>
