@@ -37,10 +37,10 @@
                                     echo "Files:"
                                     ls -la
                                     
-                                    if [ -f "todo.html" ]; then
-                                        echo "✅ Found todo.html"
+                                    if [ -f "index.html" ]; then
+                                        echo "✅ Found index.html"
                                         echo "File size: $(wc -c < todo.html) bytes"
-                                        echo "Lines: $(wc -l < todo.html)"
+                                        echo "Lines: $(wc -l < index.html)"
                                         
                                         # Create simple build output
                                         mkdir -p target
