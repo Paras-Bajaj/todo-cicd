@@ -323,272 +323,604 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     
     <script>
-/* ===========================
-   CONFIG
-=========================== */
-toastr.options = {
-  positionClass: "toast-top-right",
-  progressBar: true,
-  timeOut: 3000,
-  closeButton: true
-};
-
-/* ===========================
-   STATE
-=========================== */
-let todos = JSON.parse(localStorage.getItem("todos")) || [];
-let filter = "all";
-let theme = localStorage.getItem("theme") || "light";
-let dragSrcEl = null;
-
-/* ===========================
-   DOM
-=========================== */
-const list = document.getElementById("list");
-const emptyState = document.getElementById("emptyState");
-const dropzone = document.getElementById("dropzone");
-const taskCount = document.getElementById("taskCount");
-const highPriorityEl = document.getElementById("highPriority");
-const progressFill = document.getElementById("progressFill");
-const progressPercent = document.getElementById("progressPercent");
-const themeIcon = document.getElementById("themeIcon");
-
-/* ===========================
-   INIT
-=========================== */
-document.documentElement.classList.toggle("dark", theme === "dark");
-themeIcon.className = theme === "dark" ? "fas fa-sun" : "fas fa-moon";
-
-/* ===========================
-   UTILITIES
-=========================== */
-function save() {
-  localStorage.setItem("todos", JSON.stringify(todos));
-}
-
-function notify(msg, type = "info") {
-  toastr[type](msg);
-}
-
-function updateApp(msg, type) {
-  save();
-  render();
-  updateStats();
-  if (msg) notify(msg, type);
-}
-
-/* ===========================
-   FILTERING (SINGLE SOURCE)
-=========================== */
-function matchesFilter(todo, filter, search) {
-  if (search && !todo.text.toLowerCase().includes(search)) return false;
-
-  const today = new Date().toISOString().split("T")[0];
-
-  const rules = {
-    active: () => !todo.done,
-    completed: () => todo.done,
-    high: () => todo.priority === "High",
-    today: () => todo.date === today,
-    all: () => true
-  };
-
-  return (rules[filter] || rules.all)();
-}
-
-function getFilteredTodos() {
-  const search = document.getElementById("search").value.toLowerCase();
-  return todos.filter(t => matchesFilter(t, filter, search));
-}
-
-/* ===========================
-   META HELPERS
-=========================== */
-function getPriorityMeta(priority) {
-  return {
-    High: { icon: "fas fa-exclamation-circle", color: "text-red-500" },
-    Medium: { icon: "fas fa-minus-circle", color: "text-amber-500" },
-    Low: { icon: "fas fa-arrow-down-circle", color: "text-green-500" }
-  }[priority];
-}
-
-function getDateMeta(todo) {
-  if (!todo.date) {
-    return { icon: "far fa-calendar", cls: "text-slate-500", label: "No due date" };
-  }
-
-  const today = new Date().toISOString().split("T")[0];
-
-  if (todo.date < today && !todo.done)
-    return { icon: "fas fa-exclamation-triangle", cls: "text-red-500", label: "Overdue" };
-
-  if (todo.date === today && !todo.done)
-    return { icon: "fas fa-clock", cls: "text-amber-500", label: "Today" };
-
-  return { icon: "far fa-calendar", cls: "text-slate-500", label: todo.date };
-}
-
-/* ===========================
-   STATS
-=========================== */
-function updateStats() {
-  const total = todos.length;
-  const done = todos.filter(t => t.done).length;
-  const active = total - done;
-  const high = todos.filter(t => t.priority === "High").length;
-
-  document.getElementById("total").textContent = total;
-  document.getElementById("active").textContent = active;
-  document.getElementById("done").textContent = done;
-  highPriorityEl.textContent = high;
-
-  const percent = total ? Math.round((done / total) * 100) : 0;
-  progressFill.style.width = percent + "%";
-  progressPercent.textContent = percent + "%";
-}
-
-/* ===========================
-   RENDER
-=========================== */
-function render() {
-  list.innerHTML = "";
-
-  const filtered = getFilteredTodos();
-  taskCount.textContent = filtered.length;
-  emptyState.style.display = filtered.length ? "none" : "block";
-
-  filtered.forEach(todo => list.appendChild(createTodoElement(todo)));
-}
-
-/* ===========================
-   TODO ITEM
-=========================== */
-function createTodoElement(todo) {
-  const { icon, color } = getPriorityMeta(todo.priority);
-  const dateMeta = getDateMeta(todo);
-
-  const li = document.createElement("li");
-  li.className = `task-item p-4 rounded-lg bg-slate-50 dark:bg-slate-700 priority-${todo.priority.toLowerCase()} ${todo.done ? "completed-task" : ""}`;
-  li.draggable = true;
-
-  li.innerHTML = `
-    <div class="flex justify-between">
-      <label class="flex gap-3 flex-1">
-        <input type="checkbox" ${todo.done ? "checked" : ""}>
-        <div>
-          <div class="${todo.done ? "line-through opacity-60" : "font-medium"}">
-            ${todo.text}
-            <i class="${icon} ${color} ml-1 text-xs"></i>
-          </div>
-          <div class="text-sm flex gap-2 items-center">
-            <i class="${dateMeta.icon} ${dateMeta.cls}"></i>
-            <span class="${dateMeta.cls}">${dateMeta.label}</span>
-          </div>
-        </div>
-      </label>
-      <div class="flex gap-2">
-        <button class="edit">✏️</button>
-        <button class="del text-red-500">🗑</button>
-      </div>
-    </div>
-  `;
-
-  bindTodoEvents(li, todo);
-  bindDragEvents(li);
-
-  return li;
-}
-
-/* ===========================
-   EVENTS
-=========================== */
-function bindTodoEvents(li, todo) {
-  li.querySelector("input").onchange = e => {
-    todo.done = e.target.checked;
-    updateApp(`Task ${todo.done ? "completed" : "activated"}`, "success");
-  };
-
-  li.querySelector(".edit").onclick = () => {
-    const text = prompt("Edit task", todo.text);
-    if (text) {
-      todo.text = text;
-      updateApp("Task updated", "success");
-    }
-  };
-
-  li.querySelector(".del").onclick = () => {
-    todos = todos.filter(t => t.id !== todo.id);
-    updateApp("Task deleted", "error");
-  };
-}
-
-/* ===========================
-   DRAG & DROP
-=========================== */
-function bindDragEvents(li) {
-  li.ondragstart = () => {
-    dragSrcEl = li;
-    li.classList.add("dragging");
-    dropzone.classList.add("drag-over");
-  };
-
-  li.ondragend = () => {
-    li.classList.remove("dragging");
-    dropzone.classList.remove("drag-over");
-  };
-
-  li.ondragover = e => e.preventDefault();
-
-  li.ondrop = () => {
-    const items = [...list.children];
-    const from = items.indexOf(dragSrcEl);
-    const to = items.indexOf(li);
-
-    if (from !== to) {
-      const [moved] = todos.splice(from, 1);
-      todos.splice(to, 0, moved);
-      updateApp("Tasks reordered", "info");
-    }
-  };
-}
-
-/* ===========================
-   FORM
-=========================== */
-document.getElementById("todoForm").onsubmit = e => {
-  e.preventDefault();
-
-  todos.push({
-    id: crypto.randomUUID(),
-    text: text.value.trim(),
-    date: date.value,
-    priority: priority.value,
-    done: false
-  });
-
-  e.target.reset();
-  priority.value = "Medium";
-  updateApp("Task added", "success");
-};
-
-/* ===========================
-   FILTERS / SEARCH / THEME
-=========================== */
-document.querySelectorAll(".filter").forEach(b =>
-  b.onclick = () => { filter = b.dataset.filter; render(); }
-);
-
-document.getElementById("search").oninput = render;
-
-document.getElementById("themeToggle").onclick = () => {
-  theme = theme === "light" ? "dark" : "light";
-  document.documentElement.classList.toggle("dark");
-  themeIcon.className = theme === "dark" ? "fas fa-sun" : "fas fa-moon";
-  localStorage.setItem("theme", theme);
-};
-
-render();
-if (!todos.length) notify("Welcome! Add your first task 🚀", "info");
-</script>
+        // Configure toastr
+        toastr.options = {
+            "positionClass": "toast-top-right",
+            "progressBar": true,
+            "timeOut": 3000,
+            "closeButton": true
+        };
+        
+        // Initialize app state
+        let todos = JSON.parse(localStorage.getItem("todos")) || [];
+        let filter = "all";
+        let theme = localStorage.getItem("theme") || "light";
+        let dragSrcEl = null;
+        
+        // DOM Elements
+        const list = document.getElementById("list");
+        const emptyState = document.getElementById("emptyState");
+        const dropzone = document.getElementById("dropzone");
+        const taskCount = document.getElementById("taskCount");
+        const highPriority = document.getElementById("highPriority");
+        const progressFill = document.getElementById("progressFill");
+        const progressPercent = document.getElementById("progressPercent");
+        const themeIcon = document.getElementById("themeIcon");
+        
+        // Set initial theme
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        themeIcon.className = theme === "dark" ? "fas fa-sun" : "fas fa-moon";
+        
+        // Format date for display
+        function formatDate(dateString) {
+            if (!dateString) return "No due date";
+            
+            const date = new Date(dateString);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const taskDate = new Date(date);
+            taskDate.setHours(0, 0, 0, 0);
+            
+            const diffTime = taskDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 0) return "Today";
+            if (diffDays === 1) return "Tomorrow";
+            if (diffDays === -1) return "Yesterday";
+            if (diffDays < 0) return `${Math.abs(diffDays)} days ago`;
+            if (diffDays > 0) return `In ${diffDays} days`;
+            
+            return date.toLocaleDateString();
+        }
+        
+        // Update stats and progress
+        function updateStats() {
+            const totalEl = document.getElementById("total");
+            const activeEl = document.getElementById("active");
+            const doneEl = document.getElementById("done");
+            
+            const totalCount = todos.length;
+            const activeCount = todos.filter(t => !t.done).length;
+            const doneCount = todos.filter(t => t.done).length;
+            const highPriorityCount = todos.filter(t => t.priority === "High").length;
+            
+            totalEl.textContent = totalCount;
+            activeEl.textContent = activeCount;
+            doneEl.textContent = doneCount;
+            highPriority.textContent = highPriorityCount;
+            
+            // Update progress
+            const progress = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+            progressFill.style.width = `${progress}%`;
+            progressPercent.textContent = `${progress}%`;
+            
+            // Color code progress bar
+            if (progress < 30) {
+                progressFill.style.backgroundColor = "#ef4444";
+            } else if (progress < 70) {
+                progressFill.style.backgroundColor = "#f59e0b";
+            } else {
+                progressFill.style.backgroundColor = "#10b981";
+            }
+        }
+        
+        // Save to localStorage
+        function save() {
+            localStorage.setItem("todos", JSON.stringify(todos));
+        }
+        
+        // Show notification
+        function showNotification(message, type = "info") {
+            toastr[type](message);
+        }
+        
+        // Render todos based on current filter and search
+        function render() {
+            list.innerHTML = "";
+            const searchTerm = document.getElementById("search").value.toLowerCase();
+            
+            // Filter todos
+            let filteredTodos = todos.filter(todo => {
+                // Apply search filter
+                if (searchTerm && !todo.text.toLowerCase().includes(searchTerm)) {
+                    return false;
+                }
+                
+                // Apply status filter
+                switch(filter) {
+                    case "active": return !todo.done;
+                    case "completed": return todo.done;
+                    case "high": return todo.priority === "High";
+                    case "today": 
+                        if (!todo.date) return false;
+                        const today = new Date().toISOString().split('T')[0];
+                        return todo.date === today;
+                    default: return true; // "all"
+                }
+            });
+            
+            // Update task count
+            taskCount.textContent = filteredTodos.length;
+            
+            // Show/hide empty state
+            if (filteredTodos.length === 0) {
+                emptyState.style.display = "block";
+            } else {
+                emptyState.style.display = "none";
+            }
+            
+            // Render each todo
+            filteredTodos.forEach((todo, index) => {
+                const li = document.createElement("li");
+                li.className = `task-item rounded-lg p-4 ${todo.done ? 'completed-task' : ''} priority-${todo.priority.toLowerCase()} bg-slate-50 dark:bg-slate-700`;
+                li.draggable = true;
+                li.dataset.id = todo.id;
+                
+                // Determine priority icon and color
+                let priorityIcon, priorityColor;
+                switch(todo.priority) {
+                    case "High": 
+                        priorityIcon = "fas fa-exclamation-circle";
+                        priorityColor = "text-red-500";
+                        break;
+                    case "Medium": 
+                        priorityIcon = "fas fa-minus-circle";
+                        priorityColor = "text-amber-500";
+                        break;
+                    case "Low": 
+                        priorityIcon = "fas fa-arrow-down-circle";
+                        priorityColor = "text-green-500";
+                        break;
+                }
+                
+                // Determine due date status
+                let dateClass = "text-slate-500";
+                let dateIcon = "far fa-calendar";
+                
+                if (todo.date) {
+                    const today = new Date().toISOString().split('T')[0];
+                    const taskDate = new Date(todo.date);
+                    const now = new Date();
+                    
+                    if (todo.date < today && !todo.done) {
+                        dateClass = "text-red-500";
+                        dateIcon = "fas fa-exclamation-triangle";
+                    } else if (todo.date === today && !todo.done) {
+                        dateClass = "text-amber-500";
+                        dateIcon = "fas fa-clock";
+                    }
+                }
+                
+                li.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center flex-1">
+                            <div class="mr-3">
+                                <input type="checkbox" ${todo.done ? "checked" : ""} 
+                                    class="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center">
+                                    <span class="${todo.done ? 'line-through text-slate-500' : 'font-medium'}">${todo.text}</span>
+                                    <span class="ml-2 ${priorityColor}">
+                                        <i class="${priorityIcon} text-xs"></i>
+                                    </span>
+                                </div>
+                                <div class="flex items-center mt-1 text-sm">
+                                    <i class="${dateIcon} mr-1 ${dateClass}"></i>
+                                    <span class="${dateClass} mr-3">${formatDate(todo.date)}</span>
+                                    <span class="text-xs px-2 py-1 rounded-full ${todo.done ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'}">
+                                        ${todo.priority} Priority
+                                    </span>
+                                    ${todo.done ? '<span class="ml-2 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">Completed</span>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center ml-3">
+                            <button class="edit-btn p-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="delete-btn p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 ml-1">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <button class="drag-handle p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg cursor-move ml-1">
+                                <i class="fas fa-grip-vertical"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Add event listeners
+                const checkbox = li.querySelector("input[type='checkbox']");
+                checkbox.addEventListener("change", () => {
+                    todo.done = checkbox.checked;
+                    save();
+                    render();
+                    updateStats();
+                    showNotification(`Task marked as ${todo.done ? 'completed' : 'active'}`, "success");
+                });
+                
+                const editBtn = li.querySelector(".edit-btn");
+                editBtn.addEventListener("click", () => {
+                    editTodo(todo);
+                });
+                
+                const deleteBtn = li.querySelector(".delete-btn");
+                deleteBtn.addEventListener("click", () => {
+                    if (confirm("Are you sure you want to delete this task?")) {
+                        const todoIndex = todos.findIndex(t => t.id === todo.id);
+                        if (todoIndex !== -1) {
+                            todos.splice(todoIndex, 1);
+                            save();
+                            render();
+                            updateStats();
+                            showNotification("Task deleted", "error");
+                        }
+                    }
+                });
+                
+                // Drag and drop handlers
+                const dragHandle = li.querySelector(".drag-handle");
+                dragHandle.addEventListener("mousedown", () => {
+                    li.classList.add("opacity-50");
+                });
+                
+                dragHandle.addEventListener("mouseup", () => {
+                    li.classList.remove("opacity-50");
+                });
+                
+                li.addEventListener("dragstart", handleDragStart);
+                li.addEventListener("dragover", handleDragOver);
+                li.addEventListener("drop", handleDrop);
+                li.addEventListener("dragend", handleDragEnd);
+                
+                list.appendChild(li);
+            });
+            
+            updateStats();
+        }
+        
+        // Edit todo function
+        function editTodo(todo) {
+            const newText = prompt("Edit task description:", todo.text);
+            if (newText !== null && newText.trim() !== "") {
+                todo.text = newText.trim();
+                
+                const newDate = prompt("Edit due date (YYYY-MM-DD) or leave empty:", todo.date || "");
+                if (newDate !== null) {
+                    todo.date = newDate || "";
+                }
+                
+                const newPriority = prompt("Edit priority (Low, Medium, High):", todo.priority);
+                if (newPriority !== null && ["Low", "Medium", "High"].includes(newPriority)) {
+                    todo.priority = newPriority;
+                }
+                
+                save();
+                render();
+                showNotification("Task updated", "success");
+            }
+        }
+        
+        // Drag and drop functions
+        function handleDragStart(e) {
+            dragSrcEl = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+            this.classList.add('dragging');
+            dropzone.classList.add('drag-over');
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (dragSrcEl !== this) {
+                // Get all todo items
+                const items = Array.from(list.children);
+                const draggedIndex = items.indexOf(dragSrcEl);
+                const droppedIndex = items.indexOf(this);
+                
+                if (draggedIndex !== -1 && droppedIndex !== -1) {
+                    // Reorder in filtered view
+                    const filteredTodos = getFilteredTodos();
+                    
+                    // Find actual indices in todos array
+                    const draggedTodo = filteredTodos[draggedIndex];
+                    const draggedActualIndex = todos.findIndex(t => t.id === draggedTodo.id);
+                    
+                    const droppedTodo = filteredTodos[droppedIndex];
+                    const droppedActualIndex = todos.findIndex(t => t.id === droppedTodo.id);
+                    
+                    // Reorder in actual todos array
+                    if (draggedActualIndex !== -1 && droppedActualIndex !== -1) {
+                        const [removed] = todos.splice(draggedActualIndex, 1);
+                        todos.splice(droppedActualIndex, 0, removed);
+                        save();
+                        render();
+                        showNotification("Tasks reordered", "info");
+                    }
+                }
+            }
+            
+            dropzone.classList.remove('drag-over');
+            return false;
+        }
+        
+        function handleDragEnd() {
+            this.classList.remove('dragging');
+            dropzone.classList.remove('drag-over');
+        }
+        
+        // Get filtered todos based on current filter
+        function getFilteredTodos() {
+            const searchTerm = document.getElementById("search").value.toLowerCase();
+            
+            return todos.filter(todo => {
+                if (searchTerm && !todo.text.toLowerCase().includes(searchTerm)) {
+                    return false;
+                }
+                
+                switch(filter) {
+                    case "active": return !todo.done;
+                    case "completed": return todo.done;
+                    case "high": return todo.priority === "High";
+                    case "today": 
+                        if (!todo.date) return false;
+                        const today = new Date().toISOString().split('T')[0];
+                        return todo.date === today;
+                    default: return true; // "all"
+                }
+            });
+        }
+        
+        // Add todo form submission
+        document.getElementById("todoForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            
+            const textEl = document.getElementById("text");
+            const dateEl = document.getElementById("date");
+            const priorityEl = document.getElementById("priority");
+            
+            if (!textEl.value.trim()) {
+                showNotification("Please enter a task description", "warning");
+                textEl.focus();
+                return;
+            }
+            
+            // Generate unique ID
+            const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            
+            todos.push({
+                id: id,
+                text: textEl.value.trim(),
+                date: dateEl.value,
+                priority: priorityEl.value,
+                done: false,
+                createdAt: new Date().toISOString()
+            });
+            
+            // Reset form
+            this.reset();
+            document.getElementById("priority").value = "Medium";
+            
+            save();
+            render();
+            showNotification("Task added successfully", "success");
+        });
+        
+        // Filter buttons
+        document.querySelectorAll(".filter").forEach(btn => {
+            btn.addEventListener("click", function() {
+                // Update active filter button
+                document.querySelectorAll(".filter").forEach(b => {
+                    b.classList.remove("bg-blue-100", "dark:bg-blue-900", "text-blue-700", "dark:text-blue-300", "font-medium");
+                    b.classList.add("bg-slate-100", "dark:bg-slate-700", "text-slate-700", "dark:text-slate-300");
+                });
+                
+                this.classList.add("bg-blue-100", "dark:bg-blue-900", "text-blue-700", "dark:text-blue-300", "font-medium");
+                this.classList.remove("bg-slate-100", "dark:bg-slate-700", "text-slate-700", "dark:text-slate-300");
+                
+                filter = this.dataset.filter;
+                render();
+            });
+        });
+        
+        // Clear completed tasks
+        document.getElementById("clearDone").addEventListener("click", function() {
+            const completedCount = todos.filter(t => t.done).length;
+            
+            if (completedCount === 0) {
+                showNotification("No completed tasks to clear", "info");
+                return;
+            }
+            
+            if (confirm(`Are you sure you want to clear ${completedCount} completed task(s)?`)) {
+                todos = todos.filter(t => !t.done);
+                save();
+                render();
+                showNotification(`Cleared ${completedCount} completed task(s)`, "success");
+            }
+        });
+        
+        // Mark all as done
+        document.getElementById("markAllBtn").addEventListener("click", function() {
+            const activeCount = todos.filter(t => !t.done).length;
+            
+            if (activeCount === 0) {
+                showNotification("No active tasks to mark as done", "info");
+                return;
+            }
+            
+            if (confirm(`Mark all ${activeCount} active task(s) as completed?`)) {
+                todos.forEach(todo => {
+                    todo.done = true;
+                });
+                save();
+                render();
+                showNotification(`Marked ${activeCount} task(s) as completed`, "success");
+            }
+        });
+        
+        // Add sample tasks
+        document.getElementById("addSampleBtn").addEventListener("click", function() {
+            const sampleTasks = [
+                { text: "Complete project proposal", date: new Date(Date.now() + 86400000).toISOString().split('T')[0], priority: "High" },
+                { text: "Buy groceries", date: new Date().toISOString().split('T')[0], priority: "Medium" },
+                { text: "Schedule team meeting", date: new Date(Date.now() + 2*86400000).toISOString().split('T')[0], priority: "High" },
+                { text: "Read new book", date: "", priority: "Low" },
+                { text: "Update portfolio website", date: new Date(Date.now() + 5*86400000).toISOString().split('T')[0], priority: "Medium" },
+                { text: "Plan weekend trip", date: new Date(Date.now() + 3*86400000).toISOString().split('T')[0], priority: "Low" }
+            ];
+            
+            sampleTasks.forEach(task => {
+                const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+                todos.push({
+                    id: id,
+                    text: task.text,
+                    date: task.date,
+                    priority: task.priority,
+                    done: false,
+                    createdAt: new Date().toISOString()
+                });
+            });
+            
+            save();
+            render();
+            showNotification("Sample tasks added", "success");
+        });
+        
+        // Clear all data
+        document.getElementById("clearAllBtn").addEventListener("click", function(e) {
+            e.preventDefault();
+            
+            if (todos.length === 0) {
+                showNotification("No tasks to clear", "info");
+                return;
+            }
+            
+            if (confirm("Are you sure you want to delete ALL tasks? This cannot be undone.")) {
+                todos = [];
+                save();
+                render();
+                showNotification("All tasks cleared", "error");
+            }
+        });
+        
+        // Search input
+        document.getElementById("search").addEventListener("input", render);
+        
+        // Theme toggle
+        document.getElementById("themeToggle").addEventListener("click", function() {
+            theme = theme === "light" ? "dark" : "light";
+            document.documentElement.classList.toggle("dark");
+            themeIcon.className = theme === "dark" ? "fas fa-sun" : "fas fa-moon";
+            localStorage.setItem("theme", theme);
+            showNotification(`Switched to ${theme} theme`, "info");
+        });
+        
+        // Export tasks
+        document.getElementById("exportBtn").addEventListener("click", function() {
+            if (todos.length === 0) {
+                showNotification("No tasks to export", "warning");
+                return;
+            }
+            
+            const dataStr = JSON.stringify(todos, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportFileDefaultName = `todos-${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            showNotification(`Exported ${todos.length} task(s)`, "success");
+        });
+        
+        // Import tasks
+        document.getElementById("importBtn").addEventListener("click", function() {
+            document.getElementById("importFile").click();
+        });
+        
+        document.getElementById("importFile").addEventListener("change", function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const importedTodos = JSON.parse(event.target.result);
+                    
+                    if (!Array.isArray(importedTodos)) {
+                        throw new Error("Invalid file format");
+                    }
+                    
+                    // Merge imported todos with existing ones
+                    // Avoid duplicates by checking IDs
+                    importedTodos.forEach(importedTodo => {
+                        if (!todos.some(todo => todo.id === importedTodo.id)) {
+                            todos.push(importedTodo);
+                        }
+                    });
+                    
+                    save();
+                    render();
+                    showNotification(`Imported ${importedTodos.length} task(s)`, "success");
+                    
+                    // Reset file input
+                    document.getElementById("importFile").value = "";
+                } catch (error) {
+                    showNotification("Error importing file. Please check the format.", "error");
+                    console.error("Import error:", error);
+                }
+            };
+            
+            reader.readAsText(file);
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener("keydown", function(e) {
+            // Ctrl+Enter to submit form
+            if (e.ctrlKey && e.key === "Enter") {
+                document.getElementById("todoForm").dispatchEvent(new Event("submit"));
+            }
+            
+            // Escape to clear search
+            if (e.key === "Escape") {
+                document.getElementById("search").value = "";
+                render();
+            }
+            
+            // Ctrl+E to export
+            if (e.ctrlKey && e.key === "e") {
+                e.preventDefault();
+                document.getElementById("exportBtn").click();
+            }
+            
+            // Ctrl+D to clear completed
+            if (e.ctrlKey && e.key === "d") {
+                e.preventDefault();
+                document.getElementById("clearDone").click();
+            }
+        });
+        
+        // Initialize the app
+        render();
+        
+        // Show welcome message
+        if (todos.length === 0) {
+            setTimeout(() => {
+                showNotification("Welcome to Ultimate Todo Pro! Add your first task or try sample tasks.", "info");
+            }, 500);
+        }
+    </script>
 </body>
-</html>
+</html> this is whole code
