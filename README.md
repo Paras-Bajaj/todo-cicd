@@ -1,5 +1,4 @@
 End-to-End CI/CD Pipeline for Static Web Application
-📋 Project Overview
 Project Goal
 Design and implement a fully automated Continuous Integration and Continuous Delivery (CI/CD) pipeline for a static web application using Docker and Jenkins.
 
