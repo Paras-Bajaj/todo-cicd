@@ -7,7 +7,7 @@ WORKDIR /app
 RUN npm install -g serve
 
 # Copy files
-COPY . .
+COPY index.html
 
 # Change ownership to non-root user
 RUN chown -R node:node /app
